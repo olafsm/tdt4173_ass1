@@ -12,6 +12,18 @@ class Node(object):
         self.children = []
         self.visited = False
         self.parent = parent
+        self.best_choice = None
+
+
+def split_information(X):
+    split_is = []
+    for i in range(X.shape[1]):
+        x = X.iloc[:,[i]]
+        s = x.value_counts().values
+        tot = sum(s)
+        t = -sum([(n/tot)*np.log2(n/tot) for n in s])
+        split_is.append(t)
+    return split_is
 
 
 def information_gain(X, y, truth_value='Yes'):
@@ -44,7 +56,7 @@ def information_gain(X, y, truth_value='Yes'):
         for v in x_entropies.values():
             y_entropy -= (sum(v)/n_values)*entropy(np.array(v))
         information_gains.append(y_entropy)
-        print(f'{x.columns.values[0]} information gain: {y_entropy:.4f}')
+        #print(f'{x.columns.values[0]} information gain: {y_entropy:.4f}')
     return information_gains
 
 
@@ -55,6 +67,7 @@ class DecisionTree:
         self.root = None
         self.n = 0
         self.i = 0
+        self.max_depth = 15
 
     def fit(self, X, y, truth_value='Yes'):
         """
@@ -69,7 +82,9 @@ class DecisionTree:
         self.n += 1
         # Get the column of the largest information gain
         IG = np.array(information_gain(X, y, truth_value=truth_value))
-        print(IG)
+        #SI = split_information(X)
+        #IGR = IG/SI
+
         indices = X.columns.values
         largest = indices[IG.argmax()]
 
@@ -77,13 +92,15 @@ class DecisionTree:
         n = Node(d=largest)
         if not self.root:
             self.root = n
+
         # If largest information gain is 0 we have a leaf node
         # y should only contain 1 value
         # Set the nodes value to the outcome and return
         if IG.max() == 0:
             n.val = y.iloc[-1]
             return n
-
+        else:
+            n.best_choice = y[np.argmax(y.value_counts())]
         # for each value in column of largest attribute, separate indices to individual lists
         new_dim = X[largest]
         new_indices = {k: [] for k in np.array(new_dim.value_counts().keys())}
@@ -132,18 +149,22 @@ class DecisionTree:
         for i in range(X.shape[0]):
             row = X.iloc[[i]]
             n = self.root
-            print(i)
+            depth = 0
             while n.val is None:
                 if len(n.children) < 1:
-                    predictions.append('success')
+                    break
                 if len(n.children) == 1:
                     n = n.children[0]
                     continue
                 for c in n.children:
-                    print(c.d)
                     if c.d == np.array(row[n.d])[0]:
                         n = c
                         break
+                if depth > self.max_depth:
+                    n.val = n.best_choice
+                    break
+                depth += 1
+
             predictions.append(n.val)
         return np.array(predictions)
 
@@ -203,19 +224,6 @@ class DecisionTree:
             rules.append(rule)
         return rules
 
-        #while q:
-        #    n = q.pop(0)
-        #    for c in n.children:
-        #        if len(n.children) == 1:
-        #            q.append(n.children[0])
-        #            continue
-        #        if not c.val:
-        #            print(f'{n.d} -> {c.d}')
-        #        else:
-        #            print(f'{c.parent.d} -> {c.d} : {c.val}')
-        #        if not c.visited:
-        #            q.append(c)
-        #            c.visited=True
         return []
 
 # --- Some utility functions 

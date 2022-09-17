@@ -1,17 +1,20 @@
 import numpy as np 
-import pandas as pd 
+import pandas as pd
+from treelib import Node, Tree
 # IMPORTANT: DO NOT USE ANY OTHER 3RD PARTY PACKAGES
 # (math, random, collections, functools, etc. are perfectly fine)
 
 
 class Node(object):
-    def __init__(self, val=None, d=None):
+    def __init__(self, val=None, d=None, parent=None):
         self.val = val
         self.d = d
         self.children = []
+        self.visited = False
+        self.parent = parent
 
 
-def information_gain(X, y, truth_value='success'):
+def information_gain(X, y, truth_value='Yes'):
     """
     Args:
         X: Attributes
@@ -20,7 +23,6 @@ def information_gain(X, y, truth_value='success'):
     Returns: float total information gain from attribute
     """
     information_gains = []
-
     for i in range(X.shape[1]):
         x = X.iloc[:,[i]]
 
@@ -52,8 +54,9 @@ class DecisionTree:
         # (with defaults) as you see fit
         self.root = None
         self.n = 0
+        self.i = 0
 
-    def fit(self, X, y):
+    def fit(self, X, y, truth_value='Yes'):
         """
         Generates a decision tree for classification
 
@@ -64,26 +67,21 @@ class DecisionTree:
             y (pd.Series): a vector of discrete ground-truth labels
         """
         self.n += 1
-        print(f'\n___________________Node {self.n} created__________________ ')
         # Get the column of the largest information gain
-        IG = np.array(information_gain(X, y))
+        IG = np.array(information_gain(X, y, truth_value=truth_value))
+        print(IG)
         indices = X.columns.values
         largest = indices[IG.argmax()]
-        #print(IG)
-        print(indices)
-        #print(largest)
 
         # create node, if its the first one add it as root
-        n = Node(d=largest )
+        n = Node(d=largest)
         if not self.root:
             self.root = n
-
         # If largest information gain is 0 we have a leaf node
         # y should only contain 1 value
         # Set the nodes value to the outcome and return
         if IG.max() == 0:
             n.val = y.iloc[-1]
-            print(f'\nLeaf node value: {n.val}')
             return n
 
         # for each value in column of largest attribute, separate indices to individual lists
@@ -91,20 +89,28 @@ class DecisionTree:
         new_indices = {k: [] for k in np.array(new_dim.value_counts().keys())}
         for idx, item in enumerate(new_dim):
             new_indices[item].append(idx)
-        print(new_indices)
-        # recurse the fit function for every list with corresponding indices
-        nc = X.drop(columns=largest)
-        print(nc)
 
-        for vi in new_indices.values():
-            nc_x = nc.drop(index=[x for x in range(nc.shape[0]) if x not in vi])
+        # recurse the fit function for every list with corresponding indices
+        ln = n
+        if largest != self.root.d:
+            ln = Node(d=largest)
+            ln.parent = n
+            n.children.append(ln)
+        nc = X.drop(columns=largest)
+
+        for vi in new_indices.keys():
+            nc_x = nc.drop(index=[x for x in range(nc.shape[0]) if x not in new_indices[vi]])
             nc_x.reset_index(drop=True, inplace=True)
 
-            nc_y = y.drop(index=[x for x in range(nc.shape[0]) if x not in vi])
+            nc_y = y.drop(index=[x for x in range(nc.shape[0]) if x not in new_indices[vi]])
             nc_y.reset_index(drop=True, inplace=True)
-
+            if nc_x.shape[1] < 1:
+                return n
             nn = self.fit(nc_x, nc_y)
-            n.children.append(nn)
+            nn.d = vi
+            nn.parent = ln
+            ln.children.append(nn)
+
         return n
 
     def predict(self, X):
@@ -121,15 +127,31 @@ class DecisionTree:
         Returns:
             A length m vector with predictions
         """
-        # TODO: Implement 
-        raise NotImplementedError()
+        predictions = []
 
+        for i in range(X.shape[0]):
+            row = X.iloc[[i]]
+            n = self.root
+            print(i)
+            while n.val is None:
+                if len(n.children) < 1:
+                    predictions.append('success')
+                if len(n.children) == 1:
+                    n = n.children[0]
+                    continue
+                for c in n.children:
+                    print(c.d)
+                    if c.d == np.array(row[n.d])[0]:
+                        n = c
+                        break
+            predictions.append(n.val)
+        return np.array(predictions)
 
-    def traverse(self, n):
-        print(n.d)
-        print(n.val)
+    def traverse(self, n, tree):
         for c in n.children:
-            self.traverse(c)
+            self.traverse(c,tree)
+        return tree
+
     def get_rules(self):
         """
         Returns the decision tree as a list of rules
@@ -148,11 +170,57 @@ class DecisionTree:
             ...
         ]
         """
-        nodes = self.traverse(self.root)
+        q = []
+        q.append(self.root)
+        self.root.visited = True
+        leaf_nodes = []
+        rules = []
+        # Get all leaf nodes
+        while q:
+            n = q.pop(0)
+            for c in n.children:
+                if not c.visited:
+                    q.append(c)
+                    c.visited = True
+                    if c.val is not None:
+                        leaf_nodes.append(c)
+
+        # Traverse backwards from the leaf nodes and create rules as we go
+        for l in leaf_nodes:
+            n = l
+            rule = ([],n.val)
+            tr = []
+
+            while True:
+                tr = []
+                tr.insert(0, n.d)
+                tr.insert(0, n.parent.d)
+                rule[0].insert(0, tuple(tr))
+                if n.parent.parent is None:
+                    break
+                else:
+                    n = n.parent.parent
+            rules.append(rule)
+        return rules
+
+        #while q:
+        #    n = q.pop(0)
+        #    for c in n.children:
+        #        if len(n.children) == 1:
+        #            q.append(n.children[0])
+        #            continue
+        #        if not c.val:
+        #            print(f'{n.d} -> {c.d}')
+        #        else:
+        #            print(f'{c.parent.d} -> {c.d} : {c.val}')
+        #        if not c.visited:
+        #            q.append(c)
+        #            c.visited=True
         return []
 
 # --- Some utility functions 
-    
+
+
 def accuracy(y_true, y_pred):
     """
     Computes discrete classification accuracy

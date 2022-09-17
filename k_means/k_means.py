@@ -8,25 +8,48 @@ import random
 
 class KMeans:
     
-    def __init__(self):
+    def __init__(self, n_clusters=2):
         # NOTE: Feel free add any hyperparameters 
         # (with defaults) as you see fit
-        self.n_clusters = 10
+        self.n_clusters = n_clusters
         self.centroids = np.array([])
         self.clusters = np.array([], dtype=int)
         self.points = np.array([])
         #random.seed(10)
 
-    def fit(self, x):
+    def fit(self, x, better_centroids=False):
         """
         Estimates parameters for the classifier
-        
+
         Args:
             x (array<m,n>): a matrix of floats with
                 m rows (#samples) and n columns (#features)
+            better_centroids: Decides whether to use k-means++ or not
+        Returns an array of centroids
         """
         self.points = np.array(x)
-        self.centroids = np.array([[uniform(0, 1), uniform(0, 1)] for _ in range(self.n_clusters)])
+
+        # standard k-means of totally random centroids
+        if not better_centroids:
+            self.centroids = np.array([[uniform(0, 1), uniform(0, 1)] for _ in range(self.n_clusters)])
+            return self.centroids
+
+        # K-means++
+        centroids = []
+        first_centroid = np.array([uniform(0, 1), uniform(0, 1)])
+        centroids.append(first_centroid)
+
+        # For each cluster, select the point furthest from any centroid
+        for _ in range(self.n_clusters-1):
+            dists = []
+            for point in self.points:
+                dist = euclidean_distance(point, centroids)
+                dists.append(min(dist))
+            furthest_point = np.argmax(dists)
+            centroids.append(self.points[furthest_point])
+
+        self.centroids = np.array(centroids)
+
         return self.centroids
 
     def predict(self, x):
